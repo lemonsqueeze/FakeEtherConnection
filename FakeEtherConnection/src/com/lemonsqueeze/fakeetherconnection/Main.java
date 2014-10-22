@@ -80,25 +80,25 @@ public class Main implements IXposedHookLoadPackage
 	  return;
       }
      
-      // if we're already on wifi don't interfere.
+      // if we're already on ethernet don't interfere.
       if (param.getResult() != null)
       {
 	  NetworkInfo network = (NetworkInfo) param.getResult();
-	  if (network.getType() == ConnectivityManager.TYPE_WIFI &&
+	  if (network.getType() == ConnectivityManager.TYPE_ETHERNET &&
 	      network.isConnected())
 	  {
-	      log_call(called + ", on wifi already.");
+	      log_call(called + ", on ethernet already.");
 	      return;
 	  }
       }
 	
-      log_call(called + ", faking wifi !");
+      log_call(called + ", faking ethernet !");
       param.setResult(getFakeNetworkInfo());
  }
 	
   public NetworkInfo	getFakeNetworkInfo() throws Exception
   {
-      NetworkInfo info = createNetworkInfo(ConnectivityManager.TYPE_WIFI, true);
+      NetworkInfo info = createNetworkInfo(ConnectivityManager.TYPE_ETHERNET, true);
       return info;
   }
 
@@ -109,123 +109,13 @@ public class Main implements IXposedHookLoadPackage
       NetworkInfo networkInfo = ctor.newInstance(0);
       
       XposedHelpers.setIntField((Object)networkInfo, "mNetworkType", type);
-      XposedHelpers.setObjectField((Object)networkInfo, "mTypeName", "WIFI");
+      XposedHelpers.setObjectField((Object)networkInfo, "mTypeName", "ETHERNET");
       XposedHelpers.setObjectField((Object)networkInfo, "mState", NetworkInfo.State.CONNECTED);
       XposedHelpers.setObjectField((Object)networkInfo, "mDetailedState", NetworkInfo.DetailedState.CONNECTED);
       XposedHelpers.setBooleanField((Object)networkInfo, "mIsAvailable", true);
       return networkInfo;
   }
 
-  public Object createWifiSsid() throws Exception 
-  {
-      // essentially does
-      // WifiSsid ssid = WifiSsid.createFromAsciiEncoded("FakeWifi");
-      
-      Class cls = XposedHelpers.findClass("android.net.wifi.WifiSsid", lpparam.classLoader);
-      Object wifissid = XposedHelpers.callStaticMethod(cls, "createFromAsciiEncoded", "FakeWifi");           
-      return wifissid;
-  }
-    
-  public WifiInfo createWifiInfo() throws Exception 
-  {
-      // WifiInfo info = new WifiInfo();      
-      WifiInfo info = (WifiInfo) XposedHelpers.newInstance(WifiInfo.class);
-
-// NEEDED ?
-//    private boolean mHiddenSSID;
-//    private int mRssi;	/** Received Signal Strength Indicator */
-
-      IPInfo ip = getIPInfo();            
-      XposedHelpers.setIntField((Object)info, "mNetworkId", 1);      
-      XposedHelpers.setObjectField((Object)info, "mWifiSsid", createWifiSsid());
-      XposedHelpers.setObjectField((Object)info, "mSupplicantState", SupplicantState.COMPLETED);
-      XposedHelpers.setObjectField((Object)info, "mBSSID", "66:55:44:33:22:11");
-      XposedHelpers.setObjectField((Object)info, "mMacAddress", "11:22:33:44:55:66");
-      XposedHelpers.setObjectField((Object)info, "mIpAddress", ip.addr);
-      XposedHelpers.setIntField((Object)info, "mLinkSpeed", 65);  // Mbps
-      
-      return info;
-  }
-
-  public static class IPInfo
-  {
-      NetworkInterface intf;
-      InetAddress addr;
-      String ip;
-      int ip_hex;
-      int netmask_hex;
-  }
-    
-  // get current ip and netmask
-  public static IPInfo getIPInfo()
-	{
-	    try
-	    {
-		List<NetworkInterface> interfaces = Collections.list(NetworkInterface.getNetworkInterfaces());
-		for (NetworkInterface intf : interfaces)
-		{
-		    List<InetAddress> addrs = Collections.list(intf.getInetAddresses());
-		    for (InetAddress addr : addrs)
-		    {
-			if (!addr.isLoopbackAddress())
-			{
-			    String sAddr = addr.getHostAddress().toUpperCase();
-			    boolean isIPv4 = InetAddressUtils.isIPv4Address(sAddr);
-			    if (isIPv4)
-			    {
-				IPInfo info = new IPInfo();
-				info.addr = addr;
-				info.intf = intf;
-				info.ip = sAddr;
-				info.ip_hex = InetAddress_to_hex(addr);
-				info.netmask_hex = netmask_to_hex(intf.getInterfaceAddresses().get(0).getNetworkPrefixLength());
-				return info;
-			    }
-			}
-		    }
-		}
-	    } catch (Exception ex) { } // for now eat exceptions
-	    return null;
-	}
-
-  public static int netmask_to_hex(int netmask_slash)
-  {
-      int r = 0;
-      int b = 1;
-      for (int i = 0; i < netmask_slash;  i++, b = b << 1)
-	  r |= b;
-      return r;
-  }      
-
-  // for DhcpInfo 
-  private static int InetAddress_to_hex(InetAddress a)
-  {
-      int result = 0;
-      byte b[] = a.getAddress();		
-      for (int i = 0; i < 4; i++)
-	  result |= (b[i] & 0xff) << (8 * i);			  
-      return result;
-  }
-    
-      
-  public DhcpInfo createDhcpInfo() throws Exception
-  {      
-      DhcpInfo i = new DhcpInfo();
-      IPInfo ip = getIPInfo();
-      i.ipAddress = ip.ip_hex;
-      i.netmask = ip.netmask_hex;
-      i.dns1 = 0x04040404;
-      i.dns2 = 0x08080808;
-      // gateway, leaseDuration, serverAddress
-
-      String s = ("ip address: " + String.format("%x", i.ipAddress) +
-		  " netmask: /" + i.netmask +
-		  "dns1: " + String.format("%x", i.dns1) +
-		  "dns2: " + String.format("%x", i.dns2));
-      log(s);
-      
-      return i;
-  }
     
   @Override
   public void handleLoadPackage(final LoadPackageParam lpp) throws Throwable
@@ -278,123 +168,13 @@ public class Main implements IXposedHookLoadPackage
 	      int network_type = (Integer) param.args[0];
 	      String called = "getNetworkInfo(" + network_type + ")";
 	      
-	      if (network_type == ConnectivityManager.TYPE_WIFI)
+	      if (network_type == ConnectivityManager.TYPE_ETHERNET)
 		  doit_networkinfo(called, param);
 	      else
 		  log_call(called + " called.");
 	  }
       });	 
 
-      // *************************************************************************************      
-      // WifiManager targets:
-      //   isWifiEnabled()      
-      //   getWifiState()
-      //   getConnectionInfo()
-      //   getDhcpInfo()
-
-      // TODO do we need these:
-      //   createWifiLock(string)
-      //   createWifiLock(int, string)
-      //   getConfiguredNetworks()
-      //      for WifiConfiguration ...
-
-      // isWifiEnabled()
-      findAndHookMethod("android.net.wifi.WifiManager", lpparam.classLoader, 
-			"isWifiEnabled", new XC_MethodHook() 
-      {
-	  @Override
-	  protected void afterHookedMethod(MethodHookParam param) throws Throwable 
-	      {
-		  log_call("isWifiEnabled() called" +
-			   (hack_enabled() ? ", faking wifi !" : ""));
-		  
-		  if (hack_enabled())
-		      param.setResult(true);
-	      }
-      });
-
-      // getWifiState()
-      findAndHookMethod("android.net.wifi.WifiManager", lpparam.classLoader, 
-			"getWifiState", new XC_MethodHook() 
-      {
-	  @Override
-	  protected void afterHookedMethod(MethodHookParam param) throws Throwable 
-	      {
-		  log_call("getWifiState() called" +
-			   (hack_enabled() ? ", faking wifi !" : ""));
-		  
-		  if (hack_enabled())		  
-		      param.setResult(WifiManager.WIFI_STATE_ENABLED);
-	      }
-      });
-      
-      
-      // getConnectionInfo()
-      findAndHookMethod("android.net.wifi.WifiManager", lpparam.classLoader, 
-			"getConnectionInfo", new XC_MethodHook() 
-      {
-	  @Override
-	  protected void afterHookedMethod(MethodHookParam param) throws Throwable 
-	      {
-		  log_call("getConnectionInfo() called" +
-			   (hack_enabled() ? ", faking wifi !" : ""));
-		  
-		  if (hack_enabled())
-		      param.setResult(createWifiInfo());
-	      }
-      });
-
-      // getDhcpInfo()
-      findAndHookMethod("android.net.wifi.WifiManager", lpparam.classLoader, 
-			"getDhcpInfo", new XC_MethodHook() 
-      {
-	  @Override
-	  protected void afterHookedMethod(MethodHookParam param) throws Throwable 
-	      {
-		  log_call("getDhcpInfo() called" +
-			   (hack_enabled() ? ", faking wifi !" : ""));
-		  
-		  if (hack_enabled())
-		      param.setResult(createDhcpInfo());
-	      }
-      });
-      
-      // *************************************************************************************
-      // debug only
-      
-      // createWifiLock(string)
-      findAndHookMethod("android.net.wifi.WifiManager", lpparam.classLoader, 
-			"createWifiLock", String.class, new XC_MethodHook() 
-      {
-	  @Override
-	  protected void afterHookedMethod(MethodHookParam param) throws Throwable 
-	      {
-		  log_call("createWifiLock(String) called");
-	      }
-      });
-
-      // createWifiLock(int, string)
-      findAndHookMethod("android.net.wifi.WifiManager", lpparam.classLoader, 
-			"createWifiLock", int.class, String.class, new XC_MethodHook() 
-      {
-	  @Override
-	  protected void afterHookedMethod(MethodHookParam param) throws Throwable 
-	      {
-		  log_call("createWifiLock(int, String) called");
-	      }
-      });
-      
-
-      // getConfiguredNetworks()
-      findAndHookMethod("android.net.wifi.WifiManager", lpparam.classLoader, 
-			"getConfiguredNetworks", new XC_MethodHook() 
-      {
-	  @Override
-	  protected void afterHookedMethod(MethodHookParam param) throws Throwable 
-	      {
-		  log_call("getConfiguredNetworks() called");
-	      }
-      });
 
       
   }
